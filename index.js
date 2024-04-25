@@ -64,7 +64,7 @@ console.log(inputValues);
       const browser = await playwright[b].launch({headless: headlessFlag, viewport: {width:viewportWidth, height:viewportHeight}});
       const context = await browser.newContext();
       const page = await context.newPage();
-
+      
       //Make sure errors and console events are catched
       await addListeners(page);
       
@@ -82,6 +82,7 @@ console.log(inputValues);
         clean(temp_directory)
       }
 
+      await initialLogin(page, baseUrl);
       //-------------------------------------------------------------------------------------------------------------------------------------------------
       //Web application ripping
       //Initial params: Playwright's Page object, URL of the current page, index of current page, parent's index
@@ -114,7 +115,7 @@ async function scrapLinks(page){
     const webLinks = links.filter(link => link.toString().includes('http'));
     return uniqueLinks = [...new Set(webLinks)];
     });
-  
+
   return stories;
 }
 
@@ -132,7 +133,7 @@ async function recursiveExploration(page, link, depth, parentState){
     return;
   } 
   console.log("Exploring");
-  await page.goto(link, {waitUntil: 'networkidle2'}).catch((err)=>{
+  await page.goto(link, {waitUntil: 'networkidle'}).catch((err)=>{
     console.log(err); 
     return; 
   });
@@ -198,7 +199,16 @@ async function recursiveExploration(page, link, depth, parentState){
 
       //Continue with the ripping process
       for(const newLink of links){
-        await recursiveExploration(page, newLink, depth+1, currentState);
+        await recursiveExploration(
+          page,
+          newLink,
+          depth + 1,
+          currentState
+        ).catch((err) => {
+          console.debug(`Recursive exploration error link:${newLink},`);
+          console.log(err)
+        });
+
       }
     }
     else{ //External pages are not explored
@@ -374,7 +384,7 @@ async function getButtons(page, elementList){
   let buttons = await page.$$('button');
   let button;
   for (let i = 0; i < buttons.length ; i++ ){
-    let disabled = page.evaluate((btn)=>{
+    let disabled = await page.evaluate((btn)=>{
       return typeof btn.getAttribute("disabled") === "string" || btn.getAttribute("aria-disabled") === "true";
     }, buttons[i]);
     if(!disabled){
@@ -422,7 +432,7 @@ async function interactWithObject(object, page, currentState, interactionNumber,
     let elementHandle = object.element;
     let location = await  getCoordinates(elementHandle, page);
     if (location.x !== 0 && location.y !== 0 && location.width !== 0 && location.height !== 0){
-      await elementHandle.hover().catch(e =>{
+      await elementHandle.hover({ timeout: 3000}).catch(e =>{
         console.log('Could not hover to element');
       });
       //Fill inputs with either random values or with the values indicated in the config file
@@ -434,7 +444,7 @@ async function interactWithObject(object, page, currentState, interactionNumber,
         //Try to find the elements with the ids indicated in the config file
         let index = ids.indexOf(id);
         if(index !== -1){
-          await elementHandle.click();
+          await elementHandle.click({ timeout: 3000}).catch(() => console.log('Could not click on element'));
           await page.keyboard.type(inputValues[index]);
         }
         else{
@@ -455,10 +465,10 @@ async function interactWithObject(object, page, currentState, interactionNumber,
       //await elementScreenshot(location, currentState, page, beforeInteraction);
       await elementScreenshotwHandle(elementHandle, currentState, beforeInteraction);
 
-      await elementHandle.hover().catch(e =>{
+      await elementHandle.hover({ timeout: 3000}).catch(e =>{
         console.log('Could not hover to element');
       });
-      await elementHandle.click().catch(e =>{
+      await elementHandle.click({ timeout: 3000}).catch(e =>{
         console.log('unclickable element');
       });
       let html = await getDOM(page);
@@ -509,7 +519,7 @@ async function interactWithObject(object, page, currentState, interactionNumber,
       let prevDOM = await getDOM(page);
       for(let i=0; i<options.length; i++){
         if(typeof options[i].getAttribute("disabled") !== "string"){ //i.e IF the option is enabled
-          await elementHandle.click();
+          await elementHandle.click({ timeout: 3000}).catch(e =>console.log('Could not click on element'));
           await options[i].click();
           let currentDOM = await getDOM(page);
           //string replacement to compare DOMS without selected
@@ -657,3 +667,21 @@ async function fillInput(elementHandle, page){
   }
 }
 
+/**
+ * Initial login to the ghost admin to allow the exploration
+ * @param {playwright.Page} page 
+ * @param {string} link 
+ */
+const initialLogin = async (page, link) => {
+  await page.goto(link, { waitUntil: "networkidle" }).catch((err) => {
+    console.log(err);
+    return;
+  });
+
+  await page.screenshot({ path: "screenshotsLogin/firstLoad.png" });
+  await page.type("#identification", config.values.identification);
+  await page.type("#password", config.values.password);
+  await page.screenshot({ path: "screenshotsLogin/type.png" });
+  await page.click("#ember5");
+  await page.screenshot({ path: "screenshotsLogin/loggedIn.png" });
+};
