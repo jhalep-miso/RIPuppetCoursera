@@ -702,9 +702,10 @@ const initialLogin = async (page, link) => {
   });
 
   await page.screenshot({ path: "screenshotsLogin/firstLoad.png" });
-  await page.type("#identification", config.values.identification);
-  await page.type("#password", config.values.password);
+  await page.locator("#identification").fill(config.values.identification);
+  await page.locator("#password").fill(config.values.password);
   await page.screenshot({ path: "screenshotsLogin/type.png" });
-  await page.click("#ember5");
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.waitForURL(link + "/#/dashboard");
   await page.screenshot({ path: "screenshotsLogin/loggedIn.png" });
 };
