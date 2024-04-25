@@ -107,7 +107,11 @@ console.log(inputValues);
     return;  
   })();
 
-//Get all anchors <a>
+/**
+ * Get all anchors <a>
+ * @param {playwright.Page} page 
+ * @returns 
+ */
 async function scrapLinks(page){
   const stories = await page.evaluate(() => {
     const anchors = Array.from(document.querySelectorAll('a'));
@@ -120,10 +124,10 @@ async function scrapLinks(page){
 }
 
 /**
- * @param {*} page Represents the playwright's Page object to interact with
- * @param {*} link Represents the current page's URL
- * @param {*} depth Represents the current node in the tree
- * @param {*} parentState Represents the previous node in the tree
+ * @param {playwright.Page} page Represents the playwright's Page object to interact with
+ * @param {string} link Represents the current page's URL
+ * @param {number} depth Represents the current node in the tree
+ * @param {number} parentState Represents the previous node in the tree
  */
 async function recursiveExploration(page, link, depth, parentState){
 
@@ -366,7 +370,11 @@ function createTree() {
   });
 }
 
-// Method to obtain the text inputs of the page and push them to the list in the params.
+/**
+ * Method to obtain the text inputs of the page and push them to the list in the params.
+ * @param {playwright.Page} page 
+ * @param {any[]} elementList 
+ */
 async function getTextInputs(page, elementList){
   let textInputs = await page.$$('input');
   let input;
@@ -379,7 +387,11 @@ async function getTextInputs(page, elementList){
     elementList.push(input);
   }
 }
-//Method to obtain the buttons of the page and push them to the list in the params.
+/**
+ * Method to obtain the buttons of the page and push them to the list in the params.
+ * @param {playwright.Page} page 
+ * @param {any[]} elementList 
+ */
 async function getButtons(page, elementList){
   let buttons = await page.$$('button');
   let button;
@@ -397,7 +409,11 @@ async function getButtons(page, elementList){
     }
   }
 }
-//Method to obtain the dropdowns of the page and push them to the list in the params.
+/**
+ * Method to obtain the dropdowns of the page and push them to the list in the params.
+ * @param {playwright.Page} page 
+ * @param {any[]} elementList 
+ */
 async function getDropdowns(page, elementList){
   let selects = await page.$$('select');
   let select;
@@ -413,10 +429,10 @@ async function getDropdowns(page, elementList){
 
 /**
  * Method to interact with the different objects that where scrapped
- * @param {*} elementList List containing DOM elements
- * @param {*} page Playwright's page object
- * @param {*} currentState Index for the current state in the node tree
- * @param {*} link Current URL
+ * @param {any[]} elementList List containing DOM elements
+ * @param {playwright.Page} page Playwright's page object
+ * @param {number} currentState Index for the current state in the node tree
+ * @param {string} link Current URL
  */
 async function interactWithObjects(elementList, page, currentState, link){
   let object;
@@ -426,7 +442,14 @@ async function interactWithObjects(elementList, page, currentState, link){
   }
 }
 
-// Method to interact with a single object depending on it's type
+/**
+ * Method to interact with a single object depending on it's type
+ * @param {any} object 
+ * @param {playwright.Page} page 
+ * @param {number} currentState 
+ * @param {number} interactionNumber 
+ * @param {string} link 
+ */
 async function interactWithObject(object, page, currentState, interactionNumber, link){
   if(object.type === 'input'){
     let elementHandle = object.element;
