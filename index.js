@@ -29,7 +29,7 @@ let enlaces = [];
 const visitedPages = new Map(); //URLs of the visited pages (key:URL, value:reachable URLs)
 let pageTree = {};
 let errors = []; //Errors Found
-
+const urlParse = require("url");
 
 //Reading configuration parameters related to possible forms
 let ids = [];
@@ -41,9 +41,6 @@ if(inputValuesFlag === true){
     inputValues.push(values[key]);
   });
 }
-console.log(ids);
-console.log(inputValues);
-
 
   //Main execution
   (async () => {
@@ -55,8 +52,11 @@ console.log(inputValues);
       if(!b in ['chromium', 'webkit', 'firefox']){
         return;
       }
-      console.log(b);
-      let basePath = `./results/${datetime}/${b}`
+
+      console.log('starting execution with browser: ' + b)
+      const parsedUrl = urlParse.parse(baseUrl, true)
+      const pathname = slugify(parsedUrl.hash || parsedUrl.pathname);
+      let basePath = `./results/path/${pathname}/dl${config.depthLevels}/${datetime}/${b}`
       screenshots_directory = `${basePath}/screenshots`;
       temp_directory = `${basePath}/temp` + b;
       graphFilenameRoot = `${basePath}/graph`;
@@ -65,8 +65,6 @@ console.log(inputValues);
       const context = await browser.newContext();
       const page = await context.newPage();
       
-      //Make sure errors and console events are catched
-      await addListeners(page);
       
       if (!fs.existsSync(screenshots_directory)){
         fs.mkdirSync(screenshots_directory, { recursive: true });
@@ -82,13 +80,18 @@ console.log(inputValues);
         clean(temp_directory)
       }
 
-      await initialLogin(page, baseUrl);
+      await initialLogin(page, config.loginUrl);
+      //Make sure errors and console events are catched
+      await addListeners(page);
       //-------------------------------------------------------------------------------------------------------------------------------------------------
       //Web application ripping
       //Initial params: Playwright's Page object, URL of the current page, index of current page, parent's index
-      await recursiveExploration(page, baseUrl, 0, -1); 
+      await recursiveExploration(page, baseUrl, 0, -1).catch((err) => {
+        console.debug(`Recursive exploration error link:${baseUrl},`);
+        console.log(err);
+      });
   
-      printTree(); //Log in the console
+      // printTree(); //Log in the console
       createTree(); //Persist in JSON file
       createErrorGraph(); //Persist graph with errors
       statesDiscovered = 0;
@@ -136,7 +139,6 @@ async function recursiveExploration(page, link, depth, parentState){
     console.log("Depth levels reached. Exploration stopped")
     return;
   } 
-  console.log("Exploring");
   await page.goto(link, {waitUntil: 'networkidle'}).catch((err)=>{
     console.log(err); 
     return; 
@@ -179,9 +181,9 @@ async function recursiveExploration(page, link, depth, parentState){
 
     //Explore the current page
     console.log('Visiting: ' + link);
-    console.log('Children pages: ');
     const links = await scrapLinks(page);
-    console.log(links);
+    // console.log('Children pages: ' + JSON.stringify(links));
+    console.log('Children pages: ' + link.length);
 
     visitedPages.set(link, {
       url: link,
@@ -208,10 +210,7 @@ async function recursiveExploration(page, link, depth, parentState){
           newLink,
           depth + 1,
           currentState
-        ).catch((err) => {
-          console.debug(`Recursive exploration error link:${newLink},`);
-          console.log(err)
-        });
+        )
 
       }
     }
@@ -355,8 +354,8 @@ function createTree() {
     }
   }
 
-  console.log('Possible Links: ');
-  console.log(availableLinks);
+  // console.log('Possible Links: ');
+  // console.log(availableLinks);
 
   //Final graph
   graphTry.links = availableLinks;
@@ -392,19 +391,27 @@ async function getTextInputs(page, elementList){
  * @param {playwright.Page} page 
  * @param {any[]} elementList 
  */
-async function getButtons(page, elementList){
-  let buttons = await page.$$('button');
+async function getButtons(page, elementList) {
+  let buttons = await page.$$("button");
   let button;
-  for (let i = 0; i < buttons.length ; i++ ){
-    let disabled = await page.evaluate((btn)=>{
-      return typeof btn.getAttribute("disabled") === "string" || btn.getAttribute("aria-disabled") === "true";
-    }, buttons[i]);
-    if(!disabled){
+  const { excludeButtonClasses } = config;
+  for (let i = 0; i < buttons.length; i++) {
+    let disabled = await page.evaluate(
+      ({ btn, excluded }) => {
+        return (
+          typeof btn.getAttribute("disabled") === "string" ||
+          btn.getAttribute("aria-disabled") === "true" ||
+          excluded.includes(btn.getAttribute("class"))
+        );
+      },
+      { btn: buttons[i], excluded: excludeButtonClasses}
+    );
+    if (!disabled) {
       button = {
-        'type' : 'button',
-        'element': buttons[i],
-        'url': page.url()
-      }
+        type: "button",
+        element: buttons[i],
+        url: page.url(),
+      };
       elementList.push(button);
     }
   }
@@ -486,7 +493,7 @@ async function interactWithObject(object, page, currentState, interactionNumber,
     let location = await  getCoordinates(elementHandle, page);
     if (location.x !== 0 && location.y !== 0 && location.width !== 0 && location.height !== 0){
       //await elementScreenshot(location, currentState, page, beforeInteraction);
-      await elementScreenshotwHandle(elementHandle, currentState, beforeInteraction);
+      await elementScreenshotwHandle(elementHandle, currentState, beforeInteraction, page);
 
       await elementHandle.hover({ timeout: 3000}).catch(e =>{
         console.log('Could not hover to element');
@@ -518,8 +525,11 @@ async function interactWithObject(object, page, currentState, interactionNumber,
           nodos.push(nodo);
           //Taking screenshot
           let imagePath = screenshots_directory + '/' + thisState + '.png';
-          await page.screenshot({path: imagePath,
-                    fullPage: true});
+          await page
+            .screenshot({ path: imagePath, fullPage: true })
+            .catch((err) =>
+              console.log("Could not take state full screenshot")
+            );
         }
         else{
           fs.unlinkSync(screenshots_directory + '/' + 'state_' + currentState + '_interaction_' + (statesDiscovered) + beforeInteraction + '.png',
@@ -608,12 +618,17 @@ async function elementScreenshot(location, currentState, page, moment){
     console.log(err);
   });
 }
-async function elementScreenshotwHandle(element, currentState, moment){
-  await element.screenshot({
-    path: screenshots_directory + '/' + 'state_' + currentState + '_interaction_' + (statesDiscovered) + moment + '.png'
-  }).catch((err)=>{
-    console.log(err);
-  });
+async function elementScreenshotwHandle(element, currentState, moment, page){
+  const ssPath = screenshots_directory + "/" + "state_" + currentState + "_interaction_" + statesDiscovered + moment + ".png";
+  try {
+    await element.screenshot({
+      path: ssPath,
+    });
+  } catch (error) {
+    console.log("Error taking screenshot of element ", ssPath);
+    const location = await getCoordinates(element, page);
+    await elementScreenshot(location, currentState, page, moment);
+  }
 }
 
 function createErrorGraph(){
@@ -657,36 +672,34 @@ function createErrorGraph(){
   });
 }
 
-async function fillInput(elementHandle, page){
-  let type = await page.evaluate(el => {
+async function fillInput(elementHandle, page) {
+  let type = await page.evaluate((el) => {
     return el.type;
   }, elementHandle);
-  if(type === 'text'){
-    elementHandle.click();
-    page.keyboard.type(faker.random.words());
-  }
-  else if(type === 'search'){
-    elementHandle.click();
-    page.keyboard.type(faker.random.alphaNumeric());
-  }
-  else if(type === 'password'){
-    elementHandle.click();
-    page.keyboard.type(faker.internet.password()); 
-  }
-  else if(type === 'email'){
-    elementHandle.click();
-    page.keyboard.type(faker.internet.email());
-  }
-  else if (type === 'tel'){
-    elementHandle.click();
-    page.keyboard.type(faker.phone.phoneNumber()) ;
-  }
-  else if (type === 'number'){
-    elementHandle.click();
-    page.keyboard.type(faker.random.number) ;
-  }
-  else if(type === 'submit' || type === 'radio' || type === 'checkbox'){
-    elementHandle.click();
+  try {
+    if (type === "text") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.random.words());
+    } else if (type === "search") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.random.alphaNumeric());
+    } else if (type === "password") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.internet.password());
+    } else if (type === "email") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.internet.email());
+    } else if (type === "tel") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.phone.phoneNumber());
+    } else if (type === "number") {
+      await elementHandle.click({ timeout: 3000});
+      page.keyboard.type(faker.random.number);
+    } else if (type === "submit" || type === "radio" || type === "checkbox") {
+      await elementHandle.click({ timeout: 3000});
+    }
+  } catch (error) {
+    console.debug(`Error filling input type ${type}`, error);
   }
 }
 

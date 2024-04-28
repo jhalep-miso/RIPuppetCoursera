@@ -1,17 +1,13 @@
 {
-  "url": "http://localhost:2369/ghost",
+  "loginUrl": "http://localhost:2369/ghost",
+  "url": "http://localhost:2369/ghost/",
   "headless": true,
   "depthLevels": 1,
   "inputValues": true,
   "values": {
-    "userInput": "Mario",
-    "passwordInput": "123456",
-    "passwordTwoInput": "123456",
-    "nameInput": "Mario",
     "password": "MyGh0stPass!",
-    "identification": "ja.penat1@uniandes.edu.co",
-    "emailInput": "mario@b.com"
+    "identification": "ja.penat1@uniandes.edu.co"
   },
-
-  "browsers": ["chromium"]
+  "excludeButtonClasses": ["gh-nav-btn-search"],
+  "browsers": ["chromium", "firefox", "webkit"]
 }
